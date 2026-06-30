@@ -1,0 +1,24 @@
+{
+  "name": "mccrosscheck",
+  "version": "1.0.0",
+  "description": "Minecraft Java/Bedrock cross-play connectivity tester",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "minecraft",
+    "bedrock",
+    "java",
+    "geyser"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "bedrock-protocol": "^3.57.0",
+    "chalk": "^4.1.2",
+    "commander": "^15.0.0",
+    "tcp-ping": "^0.1.1"
+  },
+  "author": "",
+  "type": "commonjs"
+}
