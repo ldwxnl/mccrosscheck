@@ -1,49 +1,140 @@
 #!/usr/bin/env node
-const { program } = require('commander');
-const chalk = require('chalk');
+const readline = require('readline');
 const net = require('net');
-const { ping } = require('bedrock-protocol');
+const dgram = require('dgram');
+const WebSocket = require('ws');  // 需要 npm install ws
 
-program
-  .option('-h, --host <host>', '目标地址', 'localhost')
-  .option('-p, --port <port>', '端口', '25565')
-  .parse();
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
 
-const { host, port } = program.opts();
-let javaOk = false, bedOk = false, geyserHint = false;
+console.clear();
+console.log(`
+╔══════════════════════════════════╗
+║       McCrossCheck 三合一        ║
+╠══════════════════════════════════╣
+║  1. WebSocket (wss://)           ║
+║  2. Java Edition (TCP)          ║
+║  3. Bedrock Edition (UDP)    ║
+╚══════════════════════════════════╝
+`);
 
-// Java (TCP) 检测
-function checkJava() {
-  return new Promise(res => {
-    const sock = net.createConnection({ host, port, timeout: 3000 });
-    sock.on('connect', () => { javaOk = true; sock.destroy(); res(); });
-    sock.on('error', () => res());
-    sock.on('timeout', () => { sock.destroy(); res(); });
+rl.question('请选择 (1/2/3): ', choice => {
+  rl.question('目标地址 (IP或域名): ', host => {
+    rl.question('端口: ', port => {
+      port = parseInt(port) || 25565;
+
+      switch (choice.trim()) {
+        case '1':
+          testWebSocket(host, port);
+          break;
+        case '2':
+          testJava(host, port);
+          break;
+        case '3':
+          testBedrock(host, port);
+          break;
+        default:
+          console.log('无效选择');
+          rl.close();
+      }
+    });
+  });
+});
+
+// ─── WebSocket 测试 ───
+function testWebSocket(host, port) {
+  const url = `wss://${host}:${port}`;
+  console.log(`\n🔗 正在连接 WebSocket: ${url}`);
+  const start = Date.now();
+  const ws = new WebSocket(url);
+
+  ws.on('open', () => {
+    const latency = Date.now() - start;
+    console.log(`✅ WebSocket 连接成功`);
+    console.log(`⏱ 延迟: ${latency}ms`);
+    ws.close();
+    rl.close();
+  });
+
+  ws.on('error', err => {
+    console.log(`❌ 连接失败: ${err.message}`);
+    rl.close();
+  });
+
+  ws.on('unexpected-response', () => {
+    const latency = Date.now() - start;
+    console.log(`⚠️  服务器响应了但非 WebSocket 协议 (延迟 ${latency}ms)`);
+    rl.close();
+  });
+
+  setTimeout(() => {
+    console.log('⏰ 超时 (5s)');
+    ws.close();
+    rl.close();
+  }, 5000);
+}
+
+// ─── Java (TCP) 测试 ───
+function testJava(host, port) {
+  console.log(`\n🔍 测试 Java (TCP): ${host}:${port}`);
+  const start = Date.now();
+  const sock = net.createConnection({ host, port, timeout: 4000 });
+
+  sock.on('connect', () => {
+    const latency = Date.now() - start;
+    console.log(`✅ TCP 连接成功`);
+    console.log(`⏱ 延迟: ${latency}ms`);
+    sock.destroy();
+    rl.close();
+  });
+
+  sock.on('error', err => {
+    console.log(`❌ 连接失败: ${err.message}`);
+    rl.close();
+  });
+
+  sock.on('timeout', () => {
+    console.log('⏰ 超时 (4s)');
+    sock.destroy();
+    rl.close();
   });
 }
 
-// Bedrock (RakNet) 检测
-async function checkBedrock() {
-  try {
-    const res = await ping({ host, port: Number(port), timeout: 3000 });
-    bedOk = true;
-    if (res.motd && res.motd.motd && res.motd.motd.includes('Geyser')) {
-      geyserHint = true;
+// ─── Bedrock (UDP) 测试 ───
+function testBedrock(host, port) {
+  console.log(`\n🔍 测试 Bedrock (RakNet): ${host}:${port}`);
+  const start = Date.now();
+  const socket = dgram.createSocket('udp4');
+  const buf = Buffer.from([
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  ]);
+
+  socket.send(buf, 0, buf.length, port, host, err => {
+    if (err) {
+      console.log(`❌ 发送失败: ${err.message}`);
+      socket.close();
+      rl.close();
     }
-  } catch {
-    // Bedrock 不可达
-  }
+  });
+
+  socket.on('message', msg => {
+    const latency = Date.now() - start;
+    if (msg[0] === 0x1c) {
+      console.log(`✅ Bedrock 服务器响应`);
+      console.log(`⏱ 延迟: ${latency}ms`);
+    } else {
+      console.log(`⚠️  收到未知响应 (延迟 ${latency}ms)`);
+    }
+    socket.close();
+    rl.close();
+  });
+
+  setTimeout(() => {
+    console.log('⏰ 超时 (4s)');
+    socket.close();
+    rl.close();
+  }, 4000);
 }
-
-(async () => {
-  console.log(chalk.cyan(`\n🔍 McCrossCheck → ${host}:${port}\n`));
-  await checkJava();
-  await checkBedrock();
-
-  console.log(`Java (TCP)           : ${javaOk ? chalk.green('✔ ONLINE') : chalk.red('✘ UNREACHABLE')}`);
-  console.log(`Bedrock (RakNet)     : ${bedOk ? chalk.green('✔ ONLINE') : chalk.red('✘ UNREACHABLE')}`);
-  if (geyserHint) console.log(chalk.yellow('ℹ 检测到 Geyser 特征'));
-  console.log('');
-
-  process.exit(javaOk || bedOk ? 0 : 1);
-})();
