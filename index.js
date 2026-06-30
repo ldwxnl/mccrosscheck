@@ -2,7 +2,7 @@
 const readline = require('readline');
 const net = require('net');
 const dgram = require('dgram');
-const WebSocket = require('ws');  // 需要 npm install ws
+const WebSocket = require('ws');
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -16,16 +16,20 @@ console.log(`
 ╠══════════════════════════════════╣
 ║  1. WebSocket (wss://)           ║
 ║  2. Java Edition (TCP)          ║
-║  3. Bedrock Edition (UDP)    ║
+║  3. Bedrock Edition (UDP)       ║
 ╚══════════════════════════════════╝
 `);
 
 rl.question('请选择 (1/2/3): ', choice => {
-  rl.question('目标地址 (IP或域名): ', host => {
-    rl.question('端口: ', port => {
-      port = parseInt(port) || 25565;
+  const mode = choice.trim();
+  const defaultPorts = { '1': 443, '2': 25565, '3': 19132 };
+  const defaultPort = defaultPorts[mode] || 25565;
 
-      switch (choice.trim()) {
+  rl.question('目标地址 (IP或域名): ', host => {
+    rl.question(`端口 (默认 ${defaultPort}): `, portInput => {
+      const port = portInput.trim() === '' ? defaultPort : parseInt(portInput) || defaultPort;
+
+      switch (mode) {
         case '1':
           testWebSocket(host, port);
           break;
@@ -36,7 +40,7 @@ rl.question('请选择 (1/2/3): ', choice => {
           testBedrock(host, port);
           break;
         default:
-          console.log('无效选择');
+          console.log('❌ 无效选择');
           rl.close();
       }
     });
